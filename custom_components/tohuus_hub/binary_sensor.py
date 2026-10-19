@@ -1,4 +1,4 @@
-"""Binary sensors: party running, something expired."""
+"""Binary sensors: something expired, away mode."""
 
 from __future__ import annotations
 
@@ -28,20 +28,27 @@ class ToHuusBinaryDescription(BinarySensorEntityDescription):
 
 BINARY_SENSORS: tuple[ToHuusBinaryDescription, ...] = (
     ToHuusBinaryDescription(
-        key="party_running",
-        translation_key="party_running",
-        device_class=BinarySensorDeviceClass.RUNNING,
-        icon="mdi:party-popper",
-        is_on_fn=lambda d: (d.get("party") or {}).get("status") == "live",
-        attrs_fn=lambda d: {"name": (d.get("party") or {}).get("name"), "ends_at": (d.get("party") or {}).get("ends_at")},
-    ),
-    ToHuusBinaryDescription(
         key="something_expired",
         translation_key="something_expired",
         device_class=BinarySensorDeviceClass.PROBLEM,
         icon="mdi:food-off-outline",
         is_on_fn=lambda d: (d.get("counts") or {}).get("expired", 0) > 0,
         attrs_fn=lambda d: {"items": [i.get("name") for i in (d.get("expiring") or []) if i.get("status") == "expired"][:25]},
+    ),
+    # away mode (trip) – on while the trip is running; older ToHuus Hubs without "away" stay off
+    ToHuusBinaryDescription(
+        key="away_mode",
+        translation_key="away_mode",
+        icon="mdi:bag-suitcase-outline",
+        is_on_fn=lambda d: bool((d.get("away") or {}).get("active")),
+        attrs_fn=lambda d: {
+            "state": (d.get("away") or {}).get("state", "home"),
+            "trip": ((d.get("away") or {}).get("trip") or {}).get("name"),
+            "start": ((d.get("away") or {}).get("trip") or {}).get("start"),
+            "end": ((d.get("away") or {}).get("trip") or {}).get("end"),
+            "quiet": bool((d.get("away") or {}).get("quiet")),
+            "suggest_start": bool((d.get("away") or {}).get("suggest_start")),
+        },
     ),
 )
 

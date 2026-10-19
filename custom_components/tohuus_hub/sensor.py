@@ -1,4 +1,4 @@
-"""Sensors: counts with item lists as attributes, tonight's meal, next care task, party status."""
+"""Sensors: counts with item lists as attributes, tonight's meal, next care task."""
 
 from __future__ import annotations
 
@@ -21,7 +21,9 @@ from .coordinator import ToHuusConfigEntry, ToHuusCoordinator
 from .entity import ToHuusEntity
 
 # list attributes can get long – keep them out of the recorder database
-LIST_ATTRS = frozenset({"items", "tasks", "orders", "wishes", "reasons", "tomorrow"})
+LIST_ATTRS = frozenset({"items", "tasks", "orders", "wishes", "reasons", "tomorrow", "thaw"})
+# sensors that need a newer ToHuus Hub (only created when /state carries their key)
+NEEDS_KEY = {"due": "due", "spending_month": "money", "spending_week": "money"}
 MAX_ITEMS = 25
 
 
@@ -63,9 +65,14 @@ def _tonight_attrs(d: dict) -> dict[str, Any]:
     }
 
 
-def _party_attrs(d: dict) -> dict[str, Any]:
-    p = d.get("party") or {}
-    return {k: p.get(k) for k in ("name", "started_at", "ends_at", "open_orders", "new_orders", "orders_total", "guest_url") if k in p}
+def _money(d: dict) -> dict[str, Any]:
+    return d.get("money") or {}
+
+
+def _spend_attrs(d: dict) -> dict[str, Any]:
+    m = _money(d)
+    b = m.get("budget") or {}
+    return {"week": m.get("week"), "month": m.get("month"), "budget": b.get("amount"), "budget_left": b.get("left"), "budget_state": b.get("state")}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -78,6 +85,33 @@ class ToHuusSensorDescription(SensorEntityDescription):
 
 
 SENSORS: tuple[ToHuusSensorDescription, ...] = (
+    ToHuusSensorDescription(
+        key="due",
+        translation_key="due",
+        icon="mdi:cart-arrow-down",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: len(d.get("due") or []),
+        attrs_fn=lambda d: {
+            "items": [{k: x.get(k) for k in ("name", "every_days", "last_bought", "due_on", "label")} for x in (d.get("due") or [])][:MAX_ITEMS]
+        },
+    ),
+    ToHuusSensorDescription(
+        key="spending_month",
+        translation_key="spending_month",
+        icon="mdi:cash-register",
+        device_class=SensorDeviceClass.MONETARY,
+        suggested_display_precision=2,
+        value_fn=lambda d: _money(d).get("month"),
+        attrs_fn=_spend_attrs,
+    ),
+    ToHuusSensorDescription(
+        key="spending_week",
+        translation_key="spending_week",
+        icon="mdi:cash",
+        device_class=SensorDeviceClass.MONETARY,
+        suggested_display_precision=2,
+        value_fn=lambda d: _money(d).get("week"),
+    ),
     ToHuusSensorDescription(
         key="products_low",
         translation_key="products_low",
@@ -142,21 +176,24 @@ SENSORS: tuple[ToHuusSensorDescription, ...] = (
         attrs_fn=lambda d: {"items": (d.get("eat_first") or [])[:MAX_ITEMS], "leftovers": (d.get("counts") or {}).get("leftovers", 0)},
     ),
     ToHuusSensorDescription(
+        key="frozen_portions",
+        translation_key="frozen_portions",
+        icon="mdi:snowflake",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: (d.get("boxes") or {}).get("freezer_portions", 0),
+        attrs_fn=lambda d: {
+            "items": [b for b in ((d.get("boxes") or {}).get("items") or []) if b.get("place") == "freezer"][:MAX_ITEMS],
+            "fridge_portions": (d.get("boxes") or {}).get("fridge_portions", 0),
+            "thaw": (d.get("boxes") or {}).get("thaw") or [],
+        },
+    ),
+    ToHuusSensorDescription(
         key="tonight",
         translation_key="tonight",
         icon="mdi:pot-steam-outline",
         value_fn=lambda d: ((d.get("tonight") or {}).get("title") or None),
         attrs_fn=_tonight_attrs,
         picture_fn=lambda d: (d.get("tonight") or {}).get("image_url"),
-    ),
-    ToHuusSensorDescription(
-        key="party",
-        translation_key="party",
-        icon="mdi:party-popper",
-        device_class=SensorDeviceClass.ENUM,
-        options=["off", "live"],
-        value_fn=lambda d: (d.get("party") or {}).get("status", "off"),
-        attrs_fn=_party_attrs,
     ),
     ToHuusSensorDescription(
         key="kid_wishes",
@@ -179,7 +216,12 @@ SENSORS: tuple[ToHuusSensorDescription, ...] = (
 async def async_setup_entry(hass: HomeAssistant, entry: ToHuusConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Sensors are always on – they are the core of the integration."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(ToHuusSensor(coordinator, d) for d in SENSORS)
+    # households without a frozen place get no frozen-portions sensor (older servers don't send the flag: keep it)
+    boxes = (coordinator.data or {}).get("boxes") or {}
+    data = coordinator.data or {}
+    skip = {"frozen_portions"} if boxes.get("has_freezer") is False else set()
+    skip |= {key for key, needs in NEEDS_KEY.items() if needs not in data}
+    async_add_entities(ToHuusSensor(coordinator, d) for d in SENSORS if d.key not in skip)
 
 
 class ToHuusSensor(ToHuusEntity, SensorEntity):
@@ -197,6 +239,12 @@ class ToHuusSensor(ToHuusEntity, SensorEntity):
     @property
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self.data)
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        if self.entity_description.device_class is SensorDeviceClass.MONETARY:
+            return _money(self.data).get("currency") or "EUR"
+        return self.entity_description.native_unit_of_measurement
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

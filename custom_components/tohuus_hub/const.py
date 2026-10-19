@@ -8,6 +8,15 @@ from typing import Final
 DOMAIN: Final = "tohuus_hub"
 MANUFACTURER: Final = "ToHuus Hub"
 API_VERSION: Final = 1
+# keep in step with manifest.json
+VERSION: Final = "0.3.2"
+
+# ToHuus Cloud – Home Assistant pulls everything from here over HTTPS + server-sent events (no inbound connection)
+CLOUD_URL: Final = "https://cloud.tohuus.heidrich-digital.de"
+CONF_SERVER: Final = "server"
+SERVER_CLOUD: Final = "cloud"
+SERVER_OWN: Final = "own"
+CONF_CODE: Final = "code"
 
 CONF_FEATURES: Final = "features"
 CONF_LIVE_UPDATES: Final = "live_updates"
@@ -16,6 +25,15 @@ CONF_DISPLAY_WIDTH: Final = "display_width"
 CONF_DISPLAY_HEIGHT: Final = "display_height"
 CONF_COOKIDOO_SYNC: Final = "cookidoo_sync"
 CONF_COOKIDOO_ENTITY: Final = "cookidoo_entity"
+CONF_BRIDGE: Final = "bridge"
+# ToHuus notifications → Home Assistant notify services (the integration listens to the event stream)
+CONF_NOTIFY_SERVICES: Final = "notify_services"
+CONF_NOTIFY_EVENTS: Final = "notify_events"
+
+# Two-way bridge ("what Home Assistant already does"): safety-net interval, the rest is event-driven
+BRIDGE_INTERVAL: Final = timedelta(minutes=5)
+# fired after an NFC tag scan was forwarded to ToHuus Hub (result of its quick action)
+EVENT_TAG_RESULT: Final = "tohuus_hub_tag"
 
 # Cookidoo week plan → ToHuus Hub (the official Cookidoo integration's calendar)
 DEFAULT_COOKIDOO_ENTITY: Final = "calendar.cookidoo_speiseplan"
@@ -50,10 +68,23 @@ EVENT_TYPES: Final = [
     "shopping.added",
     "digest.daily",
     "care.due",
-    "party.ending",
     "kids.wish",
+    "budget.warning",
+    "plan.vote",
+    "plan.rotation",
+    "trip.started",
+    "trip.addon",
+    "rhythm.due",
+    "plan.reminder",
     "test",
 ]
+
+# who leads per topic (select entities); wire value ⇄ option shown in Home Assistant
+LEADER_TOPICS: Final = ["shopping", "meals", "care"]
+LEADER_OPTIONS: Final = {"two_way": "both", "from_ha": "home_assistant", "to_ha": "tohuus", "off": "off"}
+
+# the same, underscored – option values of the "which notifications" selector (translation keys allow no dots)
+NOTIFY_EVENT_OPTIONS: Final = [e.replace(".", "_") for e in EVENT_TYPES]
 
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 
@@ -65,3 +96,4 @@ SERVICE_PLAN_MEAL: Final = "plan_meal"
 SERVICE_ORDER: Final = "order"
 SERVICE_APPROVE_KID_WISH: Final = "approve_kid_wish"
 SERVICE_COMPLETE_CARE_TASK: Final = "complete_care_task"
+SERVICE_REPORT_PRESENCE: Final = "report_presence"
