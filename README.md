@@ -128,10 +128,10 @@ event_type: tohuus_hub_event
 data:
   event: order.new          # stock.low, stock.empty, stock.expiring, import.review, order.new,
   type: order_new           # order.status, shopping.added, digest.daily, care.due, kids.wish
-  title: Order from Lea
+  title: Order from Alex
   message: 2× Cola
   url: http://tohuus.local:8080/bar
-  data: { order_id: 12, guest: Lea, items: 1 }
+  data: { order_id: 12, guest: Alex, items: 1 }
   config_entry_id: 01J…
 ```
 
